@@ -1,41 +1,17 @@
 import { chromium, Page } from 'playwright';
-
-interface TrackingEvent {
-  date: string;
-  location: string;
-  event: string;
-  reason?: string;
-}
-
-interface ShipmentData {
-  reference: string;
-  sender: { name: string; address: string };
-  receiver: { name: string; address: string };
-  packages: Array<{
-    pieceId?: string;
-    weight?: number;
-    dimensions?: string;
-    trackingEvents?: TrackingEvent[];
-  }>;
-  trackingHistory: TrackingEvent[];
-}
+import type { TrackingEvent, ShipmentData } from './types';
 
 const TRACKING_URL = 'https://www.dbschenker.com/app/tracking-public/';
 
 async function runScraper(reference: string) {
-  // Determine headless mode:
-  // - If SCRAPER_HEADLESS env var is set, use it ("false" or "0" => headed)
-  // - Otherwise default to headless=true to avoid X server errors in CI/servers
-  // - CLI flags: --headed forces headed mode, --headless forces headless
+  // Configure headless mode from env or CLI flags (defaults to headless)
   const envVal = process.env.SCRAPER_HEADLESS;
   let headless = true;
-  if (typeof envVal === 'string') {
-    headless = !(envVal === 'false' || envVal === '0');
-  }
+  if (typeof envVal === 'string') headless = !(envVal === 'false' || envVal === '0');
   if (process.argv.includes('--headed')) headless = false;
   if (process.argv.includes('--headless')) headless = true;
 
-  console.log(`Launching browser (headless=${headless})`);
+  console.error(`Launching browser (headless=${headless})`);
   const browser = await chromium.launch({ headless });
   const context = await browser.newContext({
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36'
@@ -43,44 +19,37 @@ async function runScraper(reference: string) {
   const page = await context.newPage();
 
   try {
-    console.log(`Navigating to ${TRACKING_URL}...`);
+    console.error(`Navigating to ${TRACKING_URL}...`);
     await page.goto(TRACKING_URL, { waitUntil: 'networkidle' });
 
-    // 1. Handle Shadow DOM Privacy Banner
+    // Dismiss privacy/consent banner if present (shadow DOM aware)
     try {
       const acceptBtn = page.locator('shell-privacy-overview shell-button').filter({ hasText: /Required cookies|Accept|Acceptera/i });
-      await acceptBtn.waitFor({ state: 'visible', timeout: 5000 });
-      await acceptBtn.first().click();
-      console.log('Privacy banner dismissed.');
-    } catch (e) {
-      console.log('Privacy banner did not appear or was already dismissed.');
+      await acceptBtn.first().click({ timeout: 5000 }).catch(() => {});
+      console.error('Privacy banner dismissed (if it was present).');
+    } catch {
+      // ignore
     }
 
-    // 2. Perform Search
-    console.log(`Searching for reference: ${reference}`);
+    // Perform search
+    console.error(`Searching for reference: ${reference}`);
     await page.fill('input[matinput]', reference);
     await page.click('button.hero.primary');
 
-    
-    // Optional: Click "See More" if you want expanded details
+    // Optionally expand details
     const seeMore = page.locator('button:has-text("See more")');
-    if (await seeMore.isVisible()) {
-      await seeMore.click();
-      await page.waitForTimeout(500); // Wait for animation
+    if (await seeMore.isVisible().catch(() => false)) {
+      await seeMore.click().catch(() => {});
+      await page.waitForTimeout(500);
     }
 
+    // Wait briefly for results to render
+    await page.waitForTimeout(2000);
 
-    // 3. Wait for results to load (wait for the status history table to appear)
-    await page.waitForTimeout(5000);
-
-    // 4. Run the Parser logic
+    // Parse the page into structured data
     const data = await parseSchenkerHtml(page, reference);
-    
-  console.log('--- Extracted Data ---');
-  // Print JSON with explicit delimiters so the MCP server can reliably extract it.
-  console.log('---JSON-START---');
-  console.log(JSON.stringify(data, null, 2));
-  console.log('---JSON-END---');
+
+process.stdout.write(JSON.stringify(data));
 
     return data;
 
@@ -94,7 +63,7 @@ async function runScraper(reference: string) {
 async function parseSchenkerHtml(page: Page, reference: string): Promise<ShipmentData> {
   // Use small page-side evaluations to avoid CSP/addScriptTag issues.
   // Extract history rows in the page context.
-  const history = await page.$$eval('tbody tr.ng-star-inserted', (rows: Element[]) => {
+  const history = (await page.$$eval('tbody tr.ng-star-inserted', (rows: Element[]) => {
     return rows.map((row, index) => {
       const eventEl = row.querySelector(`[data-test^="shipment_status_history_event_${index}"]`);
       const dateEl = row.querySelector(`[data-test^="shipment_status_history_date_${index}"]`);
@@ -116,7 +85,7 @@ async function parseSchenkerHtml(page: Page, reference: string): Promise<Shipmen
       }
       return null;
     }).filter(Boolean as any);
-  });
+  })) as TrackingEvent[];
 
   // Get shipper/consignee/weight via small $eval calls (safe under CSP)
   const getText = async (selector: string) => {
@@ -133,8 +102,8 @@ async function parseSchenkerHtml(page: Page, reference: string): Promise<Shipmen
 
   return {
     reference,
-    sender: { name: 'Shipper', address: shipper },
-    receiver: { name: 'Consignee', address: consignee },
+    sender: {address: shipper },
+    receiver: { address: consignee },
     packages: [{ weight: parseFloat((weightStr || '').replace(/[^0-9.]/g, '')) || 0, trackingEvents: history }],
     trackingHistory: history,
   };

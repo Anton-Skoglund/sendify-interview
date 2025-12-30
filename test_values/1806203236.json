@@ -1,0 +1,124 @@
+{
+  "reference": "1806203236",
+  "sender": {
+    "address": "38245, Nybro, Sweden"
+  },
+  "receiver": {
+    "address": "57335, Tranås, Sweden"
+  },
+  "packages": [
+    {
+      "weight": 1.1,
+      "trackingEvents": [
+        {
+          "event": "Booked",
+          "date": "2025/12/10, 13:47",
+          "location": "Nybro"
+        },
+        {
+          "event": "Collected",
+          "date": "2025/12/10, 14:00",
+          "location": "Nybro"
+        },
+        {
+          "event": "Arrived",
+          "date": "2025/12/10, 14:01",
+          "location": "Nybro"
+        },
+        {
+          "event": "Departed",
+          "date": "2025/12/10, 15:45",
+          "location": "Nybro"
+        },
+        {
+          "event": "To consignee’s disposal",
+          "date": "2025/12/10, 15:52",
+          "location": "Jönköping",
+          "reason": "Pre-advice initiated (to receiver)"
+        },
+        {
+          "event": "Arrived",
+          "date": "2025/12/10, 22:42",
+          "location": "Jönköping"
+        },
+        {
+          "event": "Out for delivery",
+          "date": "2025/12/11, 7:16",
+          "location": "Jönköping"
+        },
+        {
+          "event": "Not delivered",
+          "date": "2025/12/11, 10:53",
+          "location": "Tranås",
+          "reason": "Conditions by consignee"
+        },
+        {
+          "event": "Delivered",
+          "date": "2025/12/11, 12:03",
+          "location": "Tranås"
+        },
+        {
+          "event": "To consignee’s disposal",
+          "date": "2025/12/11, 14:38",
+          "location": "Jönköping",
+          "reason": "Pre-advice finalised"
+        }
+      ]
+    }
+  ],
+  "trackingHistory": [
+    {
+      "event": "Booked",
+      "date": "2025/12/10, 13:47",
+      "location": "Nybro"
+    },
+    {
+      "event": "Collected",
+      "date": "2025/12/10, 14:00",
+      "location": "Nybro"
+    },
+    {
+      "event": "Arrived",
+      "date": "2025/12/10, 14:01",
+      "location": "Nybro"
+    },
+    {
+      "event": "Departed",
+      "date": "2025/12/10, 15:45",
+      "location": "Nybro"
+    },
+    {
+      "event": "To consignee’s disposal",
+      "date": "2025/12/10, 15:52",
+      "location": "Jönköping",
+      "reason": "Pre-advice initiated (to receiver)"
+    },
+    {
+      "event": "Arrived",
+      "date": "2025/12/10, 22:42",
+      "location": "Jönköping"
+    },
+    {
+      "event": "Out for delivery",
+      "date": "2025/12/11, 7:16",
+      "location": "Jönköping"
+    },
+    {
+      "event": "Not delivered",
+      "date": "2025/12/11, 10:53",
+      "location": "Tranås",
+      "reason": "Conditions by consignee"
+    },
+    {
+      "event": "Delivered",
+      "date": "2025/12/11, 12:03",
+      "location": "Tranås"
+    },
+    {
+      "event": "To consignee’s disposal",
+      "date": "2025/12/11, 14:38",
+      "location": "Jönköping",
+      "reason": "Pre-advice finalised"
+    }
+  ]
+}

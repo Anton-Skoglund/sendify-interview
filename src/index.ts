@@ -8,7 +8,15 @@ import { parseArgs } from "util";
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 
+import { ShipmentData, ShipmentSchema } from './types'
+import { request } from "undici";
+
+function returnShipment(data: ShipmentData) {
+  return ShipmentSchema.parse(data); // runtime + compile-time safety
+}
+
 const execFileP = promisify(execFile);
+
 
 const server = new McpServer(
   {
@@ -27,8 +35,6 @@ const server = new McpServer(
   }
 );
 
-// Register a scraping tool that runs the existing TypeScript scraper as a child process.
-// We explicitly do not modify src/scripts/scrape.ts — we call it and parse its stdout.
 server.registerTool(
   "scrape",
   {
@@ -38,165 +44,108 @@ server.registerTool(
     inputSchema: {
       reference: z.string().describe('Tracking/reference number to scrape'),
     },
-
-    outputSchema: {
-      reference: z.string(),
-      sender: z.object({ name: z.string(), address: z.string() }),
-      receiver: z.object({ name: z.string(), address: z.string() }),
-      packages: z.array(
-        z.object({
-          pieceId: z.string().optional(),
-          weight: z.number().optional(),
-          dimensions: z.string().optional(),
-          trackingEvents: z.array(
-            z.object({
-              date: z.string(),
-              location: z.string(),
-              event: z.string(),
-              reason: z.string().optional(),
-            })
-          ).optional(),
-        })
-      ),
-      trackingHistory: z.array(
-        z.object({
-          date: z.string(),
-          location: z.string(),
-          event: z.string(),
-          reason: z.string().optional(),
-        })
-      ),
-    },
+    outputSchema: ShipmentSchema,
   },
 
   async (params) => {
     const reference = params.reference;
-    try {
-      // Use npx tsx to execute the TypeScript scraper file; capture stdout.
-      const cmd = 'npx';
-      const args = ['tsx', 'src/scripts/scrape.ts', reference];
 
-      const { stdout, stderr } = await execFileP(cmd, args, { timeout: 120000 });
-      if (stderr && String(stderr).trim()) console.error('scraper stderr:', String(stderr).trim());
+    try {
+      const { stdout } = await execFileP(
+        'npx',
+        ['tsx', 'src/scrape.ts', reference],
+        { timeout: 120000 }
+      );
 
       const out = String(stdout || '');
 
-      // Robustly extract a JSON object/array from mixed stdout. Find the first
-      // '{' or '[' then find the matching closing brace while honoring strings
-      // and escapes so we don't accidentally cut inside a string.
+      // Prefer explicit delimiters
       function extractJson(s: string): string | null {
+        const startTag = '---JSON-START---';
+        const endTag = '---JSON-END---';
+        const start = s.indexOf(startTag);
+        const end = s.indexOf(endTag);
+        if (start !== -1 && end !== -1 && end > start) {
+          return s.slice(start + startTag.length, end).trim();
+        }
+
+        // fallback: balanced-brace extractor
         const idxBrace = s.indexOf('{');
         const idxBracket = s.indexOf('[');
-        let start = -1;
-        let openChar = '';
         if (idxBrace === -1 && idxBracket === -1) return null;
-        if (idxBrace === -1) { start = idxBracket; openChar = '['; }
-        else if (idxBracket === -1) { start = idxBrace; openChar = '{'; }
-        else { start = Math.min(idxBrace, idxBracket); openChar = start === idxBrace ? '{' : '['; }
-
+        let startIdx = -1;
+        let openChar = '';
+        if (idxBrace === -1) { startIdx = idxBracket; openChar = '['; }
+        else if (idxBracket === -1) { startIdx = idxBrace; openChar = '{'; }
+        else { startIdx = Math.min(idxBrace, idxBracket); openChar = startIdx === idxBrace ? '{' : '['; }
         const closeChar = openChar === '{' ? '}' : ']';
 
         let depth = 0;
         let inString = false;
-        let quoteChar = '';
-        let escaped = false;
-
-        for (let i = start; i < s.length; i++) {
+        let quote = '';
+        let esc = false;
+        for (let i = startIdx; i < s.length; i++) {
           const ch = s[i];
           if (inString) {
-            if (escaped) escaped = false;
-            else if (ch === '\\') escaped = true;
-            else if (ch === quoteChar) inString = false;
+            if (esc) esc = false;
+            else if (ch === '\\') esc = true;
+            else if (ch === quote) inString = false;
             continue;
           }
-
-          if (ch === '"' || ch === "'") {
-            inString = true;
-            quoteChar = ch;
-            continue;
-          }
-
+          if (ch === '"' || ch === "'") { inString = true; quote = ch; continue; }
           if (ch === openChar) depth++;
           else if (ch === closeChar) {
             depth--;
-            if (depth === 0) return s.slice(start, i + 1);
+            if (depth === 0) return s.slice(startIdx, i + 1);
           }
         }
 
         return null;
       }
 
-      const jsonLine = extractJson(out);
-      if (!jsonLine) {
-        console.error('Scraper stdout (no JSON found):\n', out);
-        throw new Error('No JSON found in scraper output');
+      const jsonSnippet = extractJson(out);
+      if (!jsonSnippet) {
+        throw new Error('No JSON found in scraper stdout');
       }
 
       let parsed: any;
       try {
-        parsed = JSON.parse(jsonLine);
+        parsed = JSON.parse(jsonSnippet);
       } catch (e) {
-        console.error('Failed to parse JSON from scraper output. Snippet:\n', jsonLine);
-        throw e;
+        throw new Error('Failed to parse JSON from scraper: ' + String(e));
       }
 
-      // Normalize parsed output to match the outputSchema strictly.
-      const normalized = {
-        reference: parsed?.reference || reference,
-        sender: {
-          name: parsed?.sender?.name || '',
-          address: parsed?.sender?.address || ''
-        },
-        receiver: {
-          name: parsed?.receiver?.name || '',
-          address: parsed?.receiver?.address || ''
-        },
-        packages: Array.isArray(parsed?.packages)
-          ? parsed.packages.map((p: any) => ({
-            pieceId: p?.pieceId || undefined,
-            weight: typeof p?.weight === 'number' ? p.weight : p?.weight ? Number(p.weight) : undefined,
-            dimensions: p?.dimensions || undefined,
-            trackingEvents: Array.isArray(p?.trackingEvents) ? p.trackingEvents : undefined,
-          }))
-          : [
-            {
-              pieceId: parsed?.packages?.pieceId || undefined,
-              weight: typeof parsed?.packages === 'number' ? parsed.packages : parsed?.packages?.weight ? Number(parsed.packages.weight) : undefined,
-              dimensions: parsed?.packages?.dimensions || undefined,
-              trackingEvents: Array.isArray(parsed?.trackingHistory) ? parsed.trackingHistory : undefined,
-            },
-          ],
-        trackingHistory: Array.isArray(parsed?.trackingHistory) ? parsed.trackingHistory : Array.isArray(parsed?.packages?.trackingEvents) ? parsed.packages.trackingEvents : [],
-      };
+      const structured = parsed.structuredContent || parsed;
+
+      // This line enforces the MCP contract at runtime
+      const validated = returnShipment(structured);
 
       return {
-        content: [{ type: 'text', text: `Scraped reference ${normalized.reference}` }],
-        structuredContent: normalized,
+        structuredContent: validated,
+        content: [{ type: 'text', text: `Scraped reference ${validated.reference}` }],
       };
     } catch (err: any) {
-      console.error('scrape tool error:', err);
-      const reference = params?.reference || '';
       return {
-        content: [{ type: 'text', text: `Scrape failed: ${err?.message || String(err)}` }],
         structuredContent: {
           reference,
           sender: { name: '', address: '' },
           receiver: { name: '', address: '' },
           packages: [],
           trackingHistory: [],
-          error: String(err),
         },
+        content: [{ type: 'text', text: `Scrape failed: ${err?.message || err}` }],
       };
     }
   }
 );
 
 
+
 // Register an AI prompt template that instructs a model to run the scraper and return a summary.
 // This does not execute the tools itself — it returns messages that an LLM client can use to
 // decide to call the `scrape` and `summarize_shipment` tools.
 server.registerPrompt?.(
-  "track_and_summarize",
+  "track_and_summarize" : ,
   {
     title: "Track & Summarize Shipment",
     description: "Fetch a DB Schenker shipment using the scrape tool and return a short summary.",
@@ -223,19 +172,19 @@ server.registerPrompt?.(
           content: {
             type: "text",
             text: `
-Call the MCP tool named "scrape" with the following JSON input exactly:
-{ "reference": "${reference}" }
+                Call the MCP tool named "scrape" with the following JSON input exactly:
+                { "reference": "${reference}" }
 
-When the tool returns structured shipment data, call the MCP tool named "summarize_shipment" and pass the returned data as the "data" parameter.
+                When the tool returns structured shipment data, call the MCP tool named "summarize_shipment" and pass the returned data as the "data" parameter.
 
-Return ONLY:
-- the final summarized text
-- the structured summary object
+                Return ONLY:
+                - the final summarized text
+                - the structured summary object
 
-Do not include intermediate steps, tool logs, or explanations.
+                Do not include intermediate steps, tool logs, or explanations.
 
-If the scrape fails, retry once. If it fails again, return a clear error message suggesting the reference number be verified.
-`
+                If the scrape fails, retry once. If it fails again, return a clear error message suggesting the reference number be verified.
+                `
           }
         }
       ]

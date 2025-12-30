@@ -2,14 +2,12 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+
 import { z } from "zod";
-import { invariant } from "@epic-web/invariant";
-import { parseArgs } from "util";
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 
 import { ShipmentData, ShipmentSchema } from './types'
-import { request } from "undici";
 
 function returnShipment(data: ShipmentData) {
   return ShipmentSchema.parse(data); // runtime + compile-time safety
@@ -140,12 +138,8 @@ server.registerTool(
 );
 
 
-
-// Register an AI prompt template that instructs a model to run the scraper and return a summary.
-// This does not execute the tools itself — it returns messages that an LLM client can use to
-// decide to call the `scrape` and `summarize_shipment` tools.
 server.registerPrompt?.(
-  "track_and_summarize" : ,
+  "track_and_summarize",
   {
     title: "Track & Summarize Shipment",
     description: "Fetch a DB Schenker shipment using the scrape tool and return a short summary.",
@@ -195,7 +189,7 @@ server.registerPrompt?.(
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("Joke API MCP Server running on stdio");
+  console.error("Schenker DB API MCP Server running on stdio");
 }
 
 main().catch((error) => {

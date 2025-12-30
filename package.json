@@ -9,8 +9,7 @@
     "build": "tsc",
     "start": "npx @modelcontextprotocol/inspector npx --yes -p tsx tsx src/index.ts",
     "scrape": "tsx src/scrape.ts",
-    "test": "tsx tests/run-parser.ts",
-    "startOLD": "node build/index.js"
+    "test": "tsx tests/run-parser.ts"
   },
   "dependencies": {
     "@epic-web/invariant": "^1.0.0",

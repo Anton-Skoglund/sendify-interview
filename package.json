@@ -1,7 +1,7 @@
 {
-  "name": "mcp-workshop",
+  "name": "schenker-db-mcp",
   "version": "1.0.0",
-  "description": "MCP Workshop for Chalmers Students - Learn to build AI-connected tools with Model Context Protocol",
+  "description": "MCP for Schenker DB",
   "type": "module",
   "private": true,
   "scripts": {
@@ -9,7 +9,7 @@
     "build": "tsc",
     "start": "npx @modelcontextprotocol/inspector npx --yes -p tsx tsx src/index.ts",
     "scrape": "tsx src/scrape.ts",
-    "test": "tsx tests/run-parser.ts"
+    "test": "tsx tests/run-e2e.ts"
   },
   "dependencies": {
     "@epic-web/invariant": "^1.0.0",
@@ -31,11 +31,9 @@
   "keywords": [
     "mcp",
     "model-context-protocol",
-    "workshop",
     "typescript",
-    "ai",
-    "tutorial"
+    "ai"
   ],
-  "author": "MCP Workshop Team",
+  "author": "Anton Skoglund",
   "license": "MIT"
 }

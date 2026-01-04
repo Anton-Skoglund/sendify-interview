@@ -34,27 +34,35 @@ export async function initializeBrowser(headedOverride: boolean = false): Promis
  * @throws Will throw an error if the navigation fails or search elements are missing.
  */
 export async function performSearch(page: Page, reference: string): Promise<void> {
-  await page.goto(TRACKING_URL, { waitUntil: 'networkidle' });
+  try {
+    await page.goto(TRACKING_URL, { waitUntil: 'networkidle' });
 
-  // Handle Privacy Banner
-  await page.locator('shell-privacy-overview shell-button')
-    .filter({ hasText: /Required cookies|Accept|Acceptera/i })
-    .first()
-    .click({ timeout: 5000 })
-    .catch(() => console.error('No privacy banner found.'));
+    // Handle Privacy Banner
+    try {
+      await page.locator('shell-privacy-overview shell-button')
+        .filter({ hasText: /Required cookies|Accept|Acceptera/i })
+        .first()
+        .click({ timeout: 5000 });
+    } catch (error) {
+      console.warn('Privacy banner not found or could not be clicked:', error);
+    }
 
-  // Input reference and search
-  await page.fill('input[matinput]', reference);
-  await page.click('button.hero.primary');
+    // Input reference and search
+    await page.fill('input[matinput]', reference);
+    await page.click('button.hero.primary');
 
-  // Expand details if "See more" exists
-  const seeMore = page.locator('button:has-text("See more")');
-  if (await seeMore.isVisible().catch(() => false)) {
-    await seeMore.click();
-    await page.waitForTimeout(500);
+    // Expand details if "See more" exists
+    const seeMore = page.locator('button:has-text("See more")');
+    if (await seeMore.isVisible().catch(() => false)) {
+      await seeMore.click();
+      await page.waitForTimeout(500);
+    }
+
+    await page.waitForTimeout(2000); // Wait for results to settle
+  } catch (error) {
+    console.error('Error during performSearch:', error);
+    throw new Error(`Failed to perform search for reference ${reference}`);
   }
-
-  await page.waitForTimeout(2000); // Wait for results to settle
 }
 
 /**
@@ -67,52 +75,55 @@ export async function performSearch(page: Page, reference: string): Promise<void
  * @returns A promise resolving to a structured {@link ShipmentData} object.
  */
 export async function extractShipmentData(page: Page, reference: string): Promise<ShipmentData> {
-  // We perform the mapping inside the browser context entirely
-  const history = await page.$$eval('tbody tr.ng-star-inserted', (rows) => {
-    return rows.map((row, index) => {
-      // Define helpers INSIDE this block so they aren't affected by Node.js transpilation
-      const eventEl = row.querySelector(`[data-test^="shipment_status_history_event_${index}"]`);
-      const dateEl = row.querySelector(`[data-test^="shipment_status_history_date_${index}"]`);
-      const locEl = row.querySelector(`[data-test^="shipment_status_history_location_${index}"]`);
-      const reasonEl = row.querySelector(`[data-test^="shipment_status_history_reasons_${index}"]`);
+  try {
+    const history = await page.$$eval('tbody tr.ng-star-inserted', (rows) => {
+      return rows.map((row, index) => {
+        const eventEl = row.querySelector(`[data-test^="shipment_status_history_event_${index}"]`);
+        const dateEl = row.querySelector(`[data-test^="shipment_status_history_date_${index}"]`);
+        const locEl = row.querySelector(`[data-test^="shipment_status_history_location_${index}"]`);
+        const reasonEl = row.querySelector(`[data-test^="shipment_status_history_reasons_${index}"]`);
 
-      const dateText = dateEl?.textContent?.trim() || '';
-      const locText = locEl?.textContent?.trim() || '';
+        const dateText = dateEl?.textContent?.trim() || '';
+        const locText = locEl?.textContent?.trim() || '';
 
-      if (!dateText && !locText) return null;
+        if (!dateText && !locText) return null;
 
-      return {
-        event: eventEl?.textContent?.trim() || 'Status Update',
-        date: dateText,
-        location: locText,
-        reason: reasonEl?.textContent?.trim() || undefined,
-      };
-    }).filter(Boolean);
-  }) as TrackingEvent[];
+        return {
+          event: eventEl?.textContent?.trim() || 'Status Update',
+          date: dateText,
+          location: locText,
+          reason: reasonEl?.textContent?.trim() || undefined,
+        };
+      }).filter(Boolean);
+    }) as TrackingEvent[];
 
-  // Separate safeGetText from the browser evaluation to avoid context leaks
-  const safeGetText = async (selector: string) => {
-    try {
-      return await page.$eval(selector, (el) => el.textContent?.trim() || '');
-    } catch {
-      return '';
-    }
-  };
+    const safeGetText = async (selector: string) => {
+      try {
+        return await page.$eval(selector, (el) => el.textContent?.trim() || '');
+      } catch (error) {
+        console.warn(`Failed to get text for selector ${selector}:`, error);
+        return '';
+      }
+    };
 
-  const shipper = await safeGetText('[data-test="shipper_place_value"]');
-  const consignee = await safeGetText('[data-test="consignee_place_value"]');
-  const weightStr = await safeGetText('[data-test="total_weight_value"]');
+    const shipper = await safeGetText('[data-test="shipper_place_value"]');
+    const consignee = await safeGetText('[data-test="consignee_place_value"]');
+    const weightStr = await safeGetText('[data-test="total_weight_value"]');
 
-  return {
-    reference,
-    sender: { address: shipper },
-    receiver: { address: consignee },
-    packages: [{
-      weight: parseFloat(weightStr.replace(/[^0-9.]/g, '')) || 0,
-      trackingEvents: history
-    }],
-    trackingHistory: history,
-  };
+    return {
+      reference,
+      sender: { address: shipper },
+      receiver: { address: consignee },
+      packages: [{
+        weight: parseFloat(weightStr.replace(/[^0-9.]/g, '')) || 0,
+        trackingEvents: history
+      }],
+      trackingHistory: history,
+    };
+  } catch (error) {
+    console.error('Error during extractShipmentData:', error);
+    throw new Error(`Failed to extract shipment data for reference ${reference}`);
+  }
 }
 
 /**
@@ -120,7 +131,7 @@ export async function extractShipmentData(page: Page, reference: string): Promis
  * Handles browser lifecycle management (open/close) and error reporting.
  * * @param reference - The shipment reference ID passed via CLI or parent function.
  */
-async function runScraper(reference: string) {
+export async function runScraper(reference: string) {
   const isHeaded = process.argv.includes('--headed');
   const { browser, page } = await initializeBrowser(isHeaded);
 
@@ -132,8 +143,9 @@ async function runScraper(reference: string) {
     process.stdout.write(JSON.stringify(data, null, 2));
 
     return data;
-  } catch (err) {
-    console.error('Scrape failed:', err);
+  } catch (error) {
+    console.error('Scrape failed:', error);
+    throw new Error(`Scraper failed for reference ${reference}`);
   } finally {
     await browser.close();
   }

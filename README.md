@@ -46,8 +46,14 @@ npx tsx src/scrape.ts 1806203236 --headed
 
 Tests
 
-Run it with:
+Run the unit tests with:
 
 ```bash
 npm test
+```
+
+To run the end-to-end (E2E) tests:
+
+```bash
+npm run e2e
 ```

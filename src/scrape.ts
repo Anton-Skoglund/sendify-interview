@@ -12,7 +12,7 @@ const TRACKING_URL = 'https://www.dbschenker.com/app/tracking-public/';
  * const { browser, page } = await initializeBrowser(true);
  * ```
  */
-async function initializeBrowser(headedOverride: boolean = false): Promise<{ browser: Browser; page: Page }> {
+export async function initializeBrowser(headedOverride: boolean = false): Promise<{ browser: Browser; page: Page }> {
   const envVal = process.env.SCRAPER_HEADLESS;
   let headless = !(envVal === 'false' || envVal === '0');
   if (headedOverride) headless = false;
@@ -33,7 +33,7 @@ async function initializeBrowser(headedOverride: boolean = false): Promise<{ bro
  * @param reference - The shipment reference number or tracking ID.
  * @throws Will throw an error if the navigation fails or search elements are missing.
  */
-async function performSearch(page: Page, reference: string): Promise<void> {
+export async function performSearch(page: Page, reference: string): Promise<void> {
   await page.goto(TRACKING_URL, { waitUntil: 'networkidle' });
 
   // Handle Privacy Banner
@@ -66,7 +66,7 @@ async function performSearch(page: Page, reference: string): Promise<void> {
  * @param reference - The reference used for the search (to be included in the return object).
  * @returns A promise resolving to a structured {@link ShipmentData} object.
  */
-async function extractShipmentData(page: Page, reference: string): Promise<ShipmentData> {
+export async function extractShipmentData(page: Page, reference: string): Promise<ShipmentData> {
   // We perform the mapping inside the browser context entirely
   const history = await page.$$eval('tbody tr.ng-star-inserted', (rows) => {
     return rows.map((row, index) => {
@@ -139,11 +139,54 @@ async function runScraper(reference: string) {
   }
 }
 
-// CLI Execution
-const ref = process.argv[2];
-if (!ref) {
-  console.error('Usage: ts-node main.ts <REFERENCE_NUMBER>');
-  process.exit(1);
+export async function extractTrackingHistory(page: Page): Promise<TrackingEvent[]> {
+  return page.$$eval('tbody tr.ng-star-inserted', rows =>
+    rows.map(r => ({
+      event: r.querySelector('[data-test^="shipment_status_history_event_"]')?.textContent?.trim() || 'Status Update',
+      date: r.querySelector('[data-test^="shipment_status_history_date_"]')?.textContent?.trim() || '',
+      location: r.querySelector('[data-test^="shipment_status_history_location_"]')?.textContent?.trim() || '',
+      reason: r.querySelector('[data-test^="shipment_status_history_reasons_"]')?.textContent?.trim() || undefined,
+    }))
+  );
 }
 
-runScraper(ref);
+export async function acceptCookies(page: Page) {
+  const consent = page.locator(
+    'shell-privacy-overview >> shadow=shell-button:has-text("Accept")'
+  );
+
+  if (await consent.isVisible({ timeout: 8000 }).catch(() => false)) {
+    await consent.click();
+    await page.waitForSelector('shell-privacy-overview', { state: 'detached', timeout: 8000 });
+  }
+}
+
+// CLI Execution
+const isMain = process.argv[1]?.endsWith('scrape.ts') || process.argv[1]?.endsWith('scrape.js');
+
+if (isMain) {
+  const ref = process.argv[2];
+  if (!ref) {
+    console.error('Usage: ts-node main.ts <REFERENCE_NUMBER>');
+    process.exit(1);
+  }
+  runScraper(ref).catch(console.error);
+}
+
+export function resolveHeadless(): boolean {
+  const env = process.env.SCRAPER_HEADLESS;
+  const cli = process.argv;
+
+  if (cli.includes('--headed')) return false;
+  if (cli.includes('--headless')) return true;
+  if (env === 'false' || env === '0') return false;
+  return true;
+}
+
+export async function createBrowser(): Promise<{ browser: Browser; page: Page }> {
+  const browser = await chromium.launch({ headless: false });
+  const context = await browser.newContext({
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36'
+  });
+  return { browser, page: await context.newPage() };
+}

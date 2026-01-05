@@ -1,0 +1,16 @@
+{
+  "reference": "9876543210",
+  "sender": {
+    "address": ""
+  },
+  "receiver": {
+    "address": ""
+  },
+  "packages": [
+    {
+      "weight": 0,
+      "trackingEvents": []
+    }
+  ],
+  "trackingHistory": []
+}

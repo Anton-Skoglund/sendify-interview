@@ -3,17 +3,21 @@
 This repository contains an MCP server and a Playwright-based scraper that extracts shipment information
 from DB Schenker's public tracking page.
 
-Features
+## Features
 - MCP server exposing a `scrape` tool which accepts a `reference` and returns structured shipment data.
 - Playwright scraper at `src/scrape.ts` that visits https://www.dbschenker.com/app/tracking-public/ and extracts shipment details.
 - CLI wrapper `src/cli-scrape.ts` to run the scraper locally and print JSON.
 - Robust MCP-side JSON extraction and normalization in `src/index.ts`.
-- Minimal parser test that runs against a saved HTML dump (uses jsdom).
+- Using jest for unit testing of components.
 
-Quick start
+## Version used
+- node v20.19.6
+- npm v10.8.2
+
+## Quick start
+Run these commands in the root of the project.
 
 1. Install dependencies
-
 ```bash
 npm install
 ```
@@ -32,7 +36,7 @@ Call the `scrape` tool with input:
  1806203236
 ```
 
-Design notes and debugging
+## Design notes and debugging
 - The scraper defaults to headless mode for server/CI usage. To run headed for debugging:
 
 ```bash
@@ -44,7 +48,7 @@ npx tsx src/scrape.ts 1806203236 --headed
 - On failures the scraper logs details. If you want automatic screenshots or HTML dumps
   on failure, I can add `--dump-on-fail` behaviour.
 
-Tests
+## Tests
 
 Run the unit tests with:
 

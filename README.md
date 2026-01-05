@@ -59,5 +59,5 @@ npm test
 To run the end-to-end (E2E) tests:
 
 ```bash
-npm run e2e
+npx jest tests/e2e/scraper.test.ts
 ```

@@ -1,5 +1,5 @@
 import { Page } from 'playwright';
-import { acceptCookies } from '../../src/scrape';
+import { acceptCookies } from '../../src/scrape-logic';
 
 describe('acceptCookies', () => {
   let page: any;

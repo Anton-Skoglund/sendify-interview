@@ -1,5 +1,5 @@
 import { chromium, Page } from 'playwright';
-import { initializeBrowser, performSearch, extractShipmentData } from '../../src/scrape';
+import { initializeBrowser, performSearch, extractShipmentData } from '../../src/scrape-logic';
 
 describe('Scrape Utilities', () => {
   describe('initializeBrowser', () => {
